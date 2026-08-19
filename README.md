@@ -129,14 +129,29 @@ npm run build          # 需要 typescript（已列入 devDependencies）
 pnpm dsh web --patch ./cordis.yml
 #    控制台出现 [screen-automation] loaded 即成功（cordis.yml 指向 ./src/index.ts）
 
-# 3) 正式发布后：
+# 3) 通过 dsh 一键安装（需先 `npm publish`，见下「发布到 npm」）
 dsh plugin --profile web add dsh-screen-automation && dsh restart web
-#    正式加载的是 package.json 中 dsh.host 指向的编译产物 ./lib/index.js
+#    安装后 package.json 的 dsh.bundle.patch (./cordis.patch.yml) 自动把插件行插入 web profile，
+#    加载编译产物 ./lib/index.js，30 个工具即注册完毕。
 ```
 
-> `cordis.yml` 的 `path` 字段指向 `./src/index.ts`（开发期热加载）；
-> 正式发布由 `package.json` 的 `dsh.host: ./lib/index.js` 决定加载编译产物。
+> 两个挂载文件分工：
+> - `cordis.yml`：`path` 指向 `./src/index.ts`，仅**开发期**热加载（`pnpm dsh web --patch ./cordis.yml`）。
+> - `cordis.patch.yml`：发布的 bundle patch，`dsh plugin add` 安装时自动插入插件行，加载编译产物 `./lib/index.js`。
 > cordis patch 的具体字段名可能随 dsh 版本变化，若加载报错请对照 `pnpm dsh --help` / 官方 cordis 配置文档调整。
+
+## 发布到 npm（让 `dsh plugin add` 可用）
+
+仓库已加 GitHub `dsh-plugin` 话题（官方发现聚合渠道，搜该话题即可找到）。要让人能
+`dsh plugin --profile web add dsh-screen-automation` 一键安装，还需发到 npm：
+
+```sh
+npm login                       # 用你的 npm 账号登录
+npm publish                     # package.json 已设 files=[lib, README.md, cordis.patch.yml]，自动排除 src/node_modules
+```
+
+发布前确认：`peerDependencies` 已声明 harness 包（与宿主 dsh 共用同一份实例，避免拉第二份 cordis 副本）；
+`dsh.bundle.patch` 指向 `cordis.patch.yml`（install 时自动插入插件行）。
 
 ## 扩展
 

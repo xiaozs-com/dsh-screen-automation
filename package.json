@@ -1,31 +1,52 @@
 {
   "name": "dsh-screen-automation",
   "version": "0.1.0",
-  "description": "DeepSeek Harness (dsh) Host plugin that bridges the local 'Screen Automation Helper' desktop platform (Windows/macOS) into the Agent tool system. Exposes status, capabilities, workflow list/run/stop, run management and screen capture as dsh tools that shell out to the helper's CLI (JSON interface).",
+  "description": "DeepSeek Harness (dsh) plugin that bridges the local 'Screen Automation Helper' desktop platform (Windows/macOS) into the Agent tool system. Exposes status, capabilities, workflow list/run/stop, run management, screen capture, local recognition primitives, input control, workflow lifecycle, task sessions and VLM understanding as dsh tools that shell out to the helper's CLI (JSON interface).",
   "type": "module",
   "license": "MIT",
-  "keywords": ["deepseek-harness", "dsh", "dsh-plugin", "screen-automation", "agent", "tool"],
+  "keywords": [
+    "deepseek-harness",
+    "dsh",
+    "dsh-plugin",
+    "screen-automation",
+    "agent",
+    "tool",
+    "computer-use"
+  ],
   "main": "./lib/index.js",
   "types": "./lib/index.d.ts",
   "files": [
     "lib",
-    "README.md"
+    "README.md",
+    "cordis.patch.yml"
   ],
   "dsh": {
-    "host": "./lib/index.js"
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    }
   },
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "watch": "tsc -p tsconfig.json --watch"
   },
-  "dependencies": {
+  "peerDependencies": {
     "@deepseek-ai/cordis": "*",
     "@deepseek-ai/dsh-tools": "*",
     "@deepseek-ai/dsh-llm": "*",
     "@deepseek-ai/dsh-attachment": "*"
   },
   "devDependencies": {
+    "@deepseek-ai/cordis": "*",
+    "@deepseek-ai/dsh-tools": "*",
+    "@deepseek-ai/dsh-llm": "*",
+    "@deepseek-ai/dsh-attachment": "*",
     "@types/node": "^22.0.0",
     "typescript": "^5.5.0"
-  }
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/xiaozs-com/dsh-screen-automation.git"
+  },
+  "homepage": "https://github.com/xiaozs-com/dsh-screen-automation#readme",
+  "bugs": "https://github.com/xiaozs-com/dsh-screen-automation/issues"
 }

@@ -1,0 +1,6 @@
+# DeepSeek Harness bundle patch — applied automatically when installed via:
+#   dsh plugin --profile web add dsh-screen-automation
+# Inserts the screen-automation host plugin row so its 30 tools auto-register.
+insert:
+  id: screen-automation
+  name: dsh-screen-automation
