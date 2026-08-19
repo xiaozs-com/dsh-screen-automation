@@ -1,0 +1,14 @@
+# DeepSeek Harness 开发期插件挂载清单（cordis patch）
+#
+# 用法（在 deepseek-harness 仓库内）：
+#   pnpm dsh web --patch ./cordis.yml
+# 控制台出现 `[screen-automation] loaded` 即挂载成功。
+#
+# 正式发布后改为：
+#   dsh plugin --profile web add dsh-screen-automation && dsh restart web
+#
+# 注意：cordis patch 的具体字段名可能随你的 dsh 版本变化；
+# 若加载报错，请对照 `pnpm dsh --help` / 官方 cordis 配置文档调整本文件。
+plugins:
+  screen-automation:
+    path: ./src/index.ts
