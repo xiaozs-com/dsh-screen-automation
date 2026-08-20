@@ -1,6 +1,15 @@
 # DeepSeek Harness bundle patch — applied automatically when installed via:
 #   dsh plugin --profile web add dsh-screen-automation
 # Inserts the screen-automation host plugin row so its 30 tools auto-register.
-insert:
-  id: screen-automation
-  name: dsh-screen-automation
+#
+# IMPORTANT: DSH loader patches must be a TOP-LEVEL YAML ARRAY of PatchOptions
+# (see dsh-app-boot `parsePatchList` / cordis-plugin-include `applyEntryPatches`).
+# Each entry may carry `insert`, whose value is an ARRAY of loader entry rows.
+#
+# The originally-published 0.1.0 shipped this file as an object keyed by
+# `insert:` (i.e. `insert:\n  id: ...`), which failed `parsePatchList` with
+# "must be a top-level YAML array of loader patch entries" and broke profile
+# boot. This array form is the correct, loadable shape.
+- insert:
+    - id: screen-automation
+      name: dsh-screen-automation
