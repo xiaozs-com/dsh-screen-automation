@@ -34,6 +34,21 @@ export const inject = ['tools']
  *  - "本地"含本地算力，故 VLM 应下沉到小助手后端用本机推理，而非默认远程端点。
  */
 
+/**
+ * 小助手未安装时给 Agent / 用户看的统一安装指引。
+ * 注意：dsh 不会去读 README，Agent 只在工具描述与工具返回/报错里获得信息，
+ * 所以这段引导必须写进运行时可被 Agent 读到的地方（下方两个 not-found 报错 + status 工具描述）。
+ * 链接按平台细分（Windows / macOS / ZIP 备用），与官方下载页一致。
+ */
+const INSTALL_HINT =
+  'The local "Screen Automation Helper" desktop app is required but was not found. ' +
+  'Install it (free, Windows / macOS) from one of:\n' +
+  '  Windows: https://www.xiaozs.com/sah/downloads/windows/latest\n' +
+  '  macOS:   https://www.xiaozs.com/sah/downloads/mac/latest\n' +
+  '  ZIP:     https://www.xiaozs.com/sah/downloads/zip/latest\n' +
+  'Or point this plugin at an existing install via one of the env vars: ' +
+  'SCREEN_AUTOMATION_BIN, SCREEN_AUTOMATION_MAC_APP, SCREEN_AUTOMATION_WIN_EXE.'
+
 /** 在多个候选路径里找到已安装的屏幕自动化小助手二进制。优先级：环境变量 > 平台默认位置。 */
 function resolveBinary(): string | null {
   const env = process.env
@@ -68,11 +83,7 @@ async function runCli(
 ): Promise<{ ok: boolean; command: string; raw: string; data: any }> {
   const bin = resolveBinary()
   if (!bin) {
-    throw new Error(
-      'Screen Automation Helper binary not found. Install it from ' +
-      'https://www.xiaozs.com/sah/downloads/ (Windows/macOS), or set one of: ' +
-      'SCREEN_AUTOMATION_BIN, SCREEN_AUTOMATION_MAC_APP, SCREEN_AUTOMATION_WIN_EXE.',
-    )
+    throw new Error(INSTALL_HINT)
   }
   const command = `cli ${args.join(' ')}`
   return new Promise((resolve, reject) => {
@@ -102,6 +113,8 @@ type CliToolOptions = {
   description: string
   parameters: any
   buildArgs: (args: any) => string[]
+  // 二进制缺失等可预期错误时，不抛错、而是返回结构化结果（含 installHint），便于 Agent 直接转述安装引导。
+  softFail?: boolean
 }
 
 /** 把一个 CLI 子命令包装成一个 dsh 工具：注册 → 调用 CLI → 透传 JSON 结果。 */
@@ -127,7 +140,15 @@ function cliTool(opts: CliToolOptions) {
       },
     },
     async execute(args) {
-      return await runCli(opts.buildArgs(args))
+      try {
+        return await runCli(opts.buildArgs(args))
+      } catch (e) {
+        if (opts.softFail) {
+          const msg = e instanceof Error ? e.message : String(e)
+          return { ok: false, command: opts.name, raw: msg, data: { installed: false, installHint: INSTALL_HINT } }
+        }
+        throw e
+      }
     },
   })
 }
@@ -138,8 +159,12 @@ export function apply(ctx: Context): void {
     name: 'screen_automation_status',
     description:
       'Check whether the local Screen Automation Helper desktop platform is available and report its status as JSON. ' +
-      'Call this first to confirm the bridge works before running workflows.',
+      'ALWAYS call this first to confirm the bridge works before any other screen_automation_* tool. ' +
+      'If it reports the helper is not installed (installed:false / "binary not found"), STOP and tell the user how ' +
+      'to install it — share the Windows/macOS/ZIP download links from the result error — and do NOT attempt other ' +
+      'screen_automation_* tools until the helper is installed and this status call succeeds.',
     parameters: {},
+    softFail: true,
     buildArgs: () => ['status'],
   }))
 
@@ -564,7 +589,10 @@ export function apply(ctx: Context): void {
     description:
       'Capture the screen via the local helper and feed the screenshot to the dsh vision model. ' +
       'Returns the model\'s natural-language understanding of what is on screen. ' +
-      'Use this for open-ended tasks OCR/template/color cannot solve (e.g. "what is this screen doing", "where did it error").',
+      'Use this for open-ended tasks OCR/template/color cannot solve (e.g. "what is this screen doing", "where did it error"). ' +
+      'Requires the local Screen Automation Helper desktop app to be installed and running. ' +
+      'If a "binary not found" error is returned, STOP and tell the user to install it ' +
+      '(share the Windows/macOS/ZIP download links in the error) before retrying.',
     parameters: {
       prompt: { type: 'string', description: 'What to ask about the screenshot. Defaults to a general description request.' },
       target: { type: 'string', description: 'Capture target: foreground | virtual-screen | work-area | task. Default foreground.' },
@@ -596,9 +624,7 @@ export function apply(ctx: Context): void {
     async execute(args) {
       const bin = resolveBinary()
       if (!bin) {
-        throw new Error(
-          'screen-automation binary not found. Set SCREEN_AUTOMATION_BIN (or install Screen Automation Helper).',
-        )
+        throw new Error(INSTALL_HINT)
       }
       if (!ctx.llm) {
         throw new Error('dsh LLM service (ctx.llm) is unavailable in this profile; cannot run vision understanding.')

@@ -6,6 +6,8 @@
 
 > 这不是重写屏幕自动化，而是**桥接**：dsh 负责 Agent 编排，小助手负责本地执行。
 
+> ⚠️ **前置依赖**：本插件只是一层桥接，**本机必须先独立安装「屏幕自动化小助手」桌面端**（Windows `.exe` / macOS `.app`），30 个工具才能真正工作。安装方式见下方「[前置依赖：安装屏幕自动化小助手](#前置依赖安装屏幕自动化小助手)」。
+
 ## 设计原则
 
 - **桥接而非重实现**：dsh 插件只做「定位二进制 → 调 CLI → 解析 JSON → 回传」，智能只写在后端。
@@ -115,6 +117,59 @@ screen capture 拿图 → ctx.attachments.saveImage 登记为不可变图片引�
 3. Windows：`SCREEN_AUTOMATION_WIN_EXE` → `%ProgramFiles%\Xiaozs\ScreenAutomationHelper\...`
 
 都找不到时，工具会抛出带官网下载链接的明确错误。
+
+## 前置依赖：安装屏幕自动化小助手
+
+本插件**不内置**任何屏幕识别或输入执行的代码，它只是一层桥接。要让上面 30 个工具真正可用，
+你本机必须先装好「屏幕自动化小助手」(Screen Automation Helper) 桌面端——Windows 上是
+`ScreenAutomationHelper.exe`，macOS 上是 `Screen Automation Helper.app`。小助手通过 `cli <subcommand>`
+暴露 JSON 接口，本插件只是去「定位二进制 → 调 CLI → 解析 JSON → 回传」。
+
+### 1. 下载与安装
+
+- **Windows 版**：<https://www.xiaozs.com/sah/downloads/windows/latest>
+- **macOS 版**：<https://www.xiaozs.com/sah/downloads/mac/latest>
+- **ZIP 备用**：<https://www.xiaozs.com/sah/downloads/zip/latest>
+
+按**默认路径**安装即可，插件会自动在系统常见位置发现它（详见下方「二进制发现」一节）。
+若使用自定义安装路径，或想在隔离环境里跑，用「二进制发现」里的环境变量 `SCREEN_AUTOMATION_BIN`
+等显式指向可执行文件即可，无需放回默认位置。
+
+> 下载页地址以官网为准；如链接变动，请替换为最新官方地址。
+
+### Agent 会在对话里主动提示安装
+
+本插件不靠 README 让 Agent「知道」前置依赖——dsh 在对话中不会读取仓库文档。
+真正起作用的是运行时注入给 Agent 的信息：`screen_automation_status` 的工具描述要求 Agent
+**先自检**；当小助手未安装时，该工具返回结构化结果（含 `installHint` 与 Windows/macOS/ZIP 下载链接），
+其余工具在 `binary not found` 时报错里也带有同样的安装指引。因此 Agent 会在首次调用时自然地把
+「请先安装屏幕自动化小助手」及下载链接转述给用户，而不是静默失败。
+
+### 2. 装好后验证
+
+在 dsh 中注册本插件，然后让 Agent 调用一次自检：
+
+```
+screen_automation_status
+```
+
+- 返回平台可用状态与版本号 → 桥接成功。
+- 报 `binary not found` → 安装路径未被自动发现，按「二进制发现」设置 `SCREEN_AUTOMATION_BIN` /
+  `SCREEN_AUTOMATION_MAC_APP` / `SCREEN_AUTOMATION_WIN_EXE` 之一后再试。
+
+### 3. 它与 dsh 插件的关系
+
+```
+屏幕自动化小助手（本地桌面端，必须独立安装）
+        ▲ 被本插件 spawn CLI 调用
+        │
+dsh-screen-automation（dsh 插件，本仓库）
+        ▲ 被 dsh Agent 以工具形式调用
+        │
+dsh Agent
+```
+
+先装小助手，再装本插件，二者各司其职：小助手是 Agent 在本地延伸的「手和眼」，本插件是它们之间的桥。
 
 ## 安装与构建
 
