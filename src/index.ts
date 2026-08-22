@@ -12,9 +12,13 @@ import type { Message, ContentBlock, ImageBlock } from '@deepseek-ai/dsh-llm'
 import type { ImageAttachmentRef, SaveImageAttachment, ImageMediaType } from '@deepseek-ai/dsh-attachment'
 
 // 插件身份：name 是插件在配置树里的稳定 id；inject 声明本插件依赖的
-// Harness 服务（工具注册表 tools）。Cordis 会等 tools 就绪后再调用 apply。
+// Harness 服务。除了工具注册表 tools，understand(VLM 视觉理解) 工具还需要
+// llm（视觉推理）与 attachments（把截图登记为图片引用）两个服务。不把它们
+// 列入 inject，Cordis 会在执行里访问 ctx.llm / ctx.attachments 时抛
+// "cannot get property 'llm' without inject"。注意：被注入的服务必须在该
+// profile 中存在，否则整个插件不会激活（见末尾说明）。
 export const name = 'screen-automation'
-export const inject = ['tools']
+export const inject = ['tools', 'llm', 'attachments']
 
 /**
  * 这个插件把本地「屏幕自动化小助手」(Screen Automation Helper) 桌面端桥接进
@@ -582,8 +586,11 @@ export function apply(ctx: Context): void {
   // 30) 把小助手截图喂给 dsh 的视觉模型（识别阶梯的最高层：VLM 理解屏幕）
   // 流程：screen capture 拿图 → ctx.attachments 登记为不可变图片引用 →
   //       拼一个含 image block 的 user 消息 → ctx.llm.stream 多模态推理 → 收集 text-delta。
-  // 注意：模型走的是 dsh 当前 profile 配置的 provider；若你想免费本地推理，
-  //       把本机视觉模型注册成 dsh 的一个 provider，然后把 provider/model 传进来即可。
+  // 注意：模型走的是 dsh 当前 profile 配置的 provider。默认 deepseek 提供方的
+  //       DeepSeek-V4-Flash-Vision-Exp 就是视觉模型，可直接用于屏幕理解；若想改用
+  //       本机模型，用环境变量 SCREEN_AUTOMATION_VISION_PROVIDER / _MODEL 配置，或每次
+  //       调用传 provider/model（例如本机 Ollama 的 qwen2.5-vl）。understand 依赖
+  //       ctx.llm 与 ctx.attachments，已在插件顶层 inject 中声明。
   ctx.tools.register(defineTool({
     name: 'screen_automation_understand',
     description:
@@ -597,8 +604,8 @@ export function apply(ctx: Context): void {
       prompt: { type: 'string', description: 'What to ask about the screenshot. Defaults to a general description request.' },
       target: { type: 'string', description: 'Capture target: foreground | virtual-screen | work-area | task. Default foreground.' },
       region: { type: 'string', description: 'Optional capture region in helper format (e.g. "0,0,800,600").' },
-      provider: { type: 'string', description: 'dsh LLM provider route (e.g. deepseek / a local ollama provider). Defaults to deepseek.' },
-      model: { type: 'string', description: 'Model id registered under the provider. Defaults to deepseek-chat.' },
+      provider: { type: 'string', description: 'dsh LLM provider route for vision (e.g. "deepseek" for DeepSeek-V4-Flash-Vision-Exp, or a local ollama provider). Falls back to env SCREEN_AUTOMATION_VISION_PROVIDER, then "deepseek".' },
+      model: { type: 'string', description: 'Vision model id under the provider. Falls back to env SCREEN_AUTOMATION_VISION_MODEL, then "DeepSeek-V4-Flash-Vision-Exp" (vision model on the deepseek provider).' },
       system: { type: 'string', description: 'Optional system prompt for the vision call.' },
     },
     output: {
@@ -683,9 +690,18 @@ export function apply(ctx: Context): void {
         source: { kind: 'user' },
       }
 
-      // 5) 走 dsh 当前 profile 的视觉模型（可传 provider/model 指向本地模型）
-      const provider = typeof args.provider === 'string' && args.provider.trim() ? args.provider.trim() : 'deepseek'
-      const model = typeof args.model === 'string' && args.model.trim() ? args.model.trim() : 'deepseek-chat'
+      // 5) 走 dsh 当前 profile 的视觉模型（可传 provider/model 指向本地模型）。
+      //    优先级：调用参数 > 环境变量(整 profile 统一默认) > hardcoded 兜底。
+      //    默认 deepseek 提供方的 DeepSeek-V4-Flash-Vision-Exp 即视觉模型，可直接用；
+      //    想换本机模型（如 qwen2.5-vl）就靠 provider/model 或环境变量覆盖。
+      const provider =
+        (typeof args.provider === 'string' && args.provider.trim())
+          ? args.provider.trim()
+          : (process.env.SCREEN_AUTOMATION_VISION_PROVIDER?.trim() || 'deepseek')
+      const model =
+        (typeof args.model === 'string' && args.model.trim())
+          ? args.model.trim()
+          : (process.env.SCREEN_AUTOMATION_VISION_MODEL?.trim() || 'DeepSeek-V4-Flash-Vision-Exp')
       let text = ''
       for await (const chunk of ctx.llm.stream({
         provider,
