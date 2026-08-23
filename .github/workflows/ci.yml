@@ -1,0 +1,43 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  build-and-verify-pack:
+    name: Build & verify publishable tarball
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+
+      - name: Install
+        run: npm ci
+
+      - name: Build
+        run: npm run build
+
+      - name: Verify tarball contains entry files
+        run: |
+          set -e
+          # 确保发布物含 lib/index.js 与 lib/index.d.ts（入口缺失会让装上的包直接坏掉）
+          npm pack --dry-run --json > pack.json
+          node - <<'NODE'
+          const fs = require('fs');
+          const p = JSON.parse(fs.readFileSync('pack.json', 'utf8'))[0];
+          const files = (p.files || []).map(f => f.path.replace(/^package\//, ''));
+          const required = ['lib/index.js', 'lib/index.d.ts'];
+          const missing = required.filter(f => !files.includes(f));
+          if (missing.length) {
+            console.error('MISSING from pack:', missing.join(', '));
+            console.error('files in pack:', files.join('\n  '));
+            process.exit(1);
+          }
+          console.log('OK: pack contains', required.join(' & '));
+          NODE
