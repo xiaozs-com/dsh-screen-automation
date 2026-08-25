@@ -40,7 +40,7 @@ dsh-screen-automation  (Host 插件, Node/TS)
 需要创建或修改流程的 Agent 必须遵循“屏幕自动化工程师”的[当前工作流开发标准](https://github.com/xiaozs-com/screen-automation-engineer/blob/main/references/workflow-standard.md)，并以本机
 `screen_automation_capabilities` 和 `screen_automation_workflow_inspect` 的结果为准。安装前先检查、
 校验流程；校验报错时不得猜测字段或用旧语法绕过。当前标准已包括表单填写的运行期 OCR `锚定`、
-相对 `偏移`、越界滚动重定位及安全停止规则。
+相对 `偏移`、`相对【文字】右侧` 等位置约束、越界滚动重定位、锚点虚线提示及安全停止规则。
 
 ## 暴露的工具（共 30 个）
 
@@ -206,12 +206,22 @@ dsh plugin --profile web add dsh-screen-automation && dsh restart web
 ## 发布到 npm（让 `dsh plugin add` 可用）
 
 仓库已加 GitHub `dsh-plugin` 话题（官方发现聚合渠道，搜该话题即可找到）。要让人能
-`dsh plugin --profile web add dsh-screen-automation` 一键安装，还需发到 npm：
+`dsh plugin --profile web add dsh-screen-automation` 一键安装，需要发布到 npm。
 
-```sh
-npm login                       # 用你的 npm 账号登录
-npm publish                     # package.json 已设 files=[lib, README.md, cordis.patch.yml]，自动排除 src/node_modules
-```
+### 一次性配置
+
+在 GitHub 仓库的 **Settings → Secrets and variables → Actions** 中创建 Secret：
+
+- 名称：`NPM_TOKEN`
+- 值：npm 网站创建的 Automation token（只用于发布 `dsh-screen-automation`）
+
+### 日常发布（无需建 GitHub Release）
+
+1. 修改 `package.json` 的 `version`，例如 `0.1.4`，并提交、推送到 `main`。
+2. 创建同名标签并推送：`git tag v0.1.4`，然后 `git push origin v0.1.4`。
+3. GitHub Actions 的 **Publish to npm** 会自动安装依赖、构建、校验发布内容，然后发布到 npm。
+
+标签必须与 `package.json` 的版本完全相同；不一致时工作流会停止，避免误发布。仅修改文档时不需要改版本、打标签或发布 npm。
 
 发布前确认：`peerDependencies` 已声明 harness 包（与宿主 dsh 共用同一份实例，避免拉第二份 cordis 副本）；
 `dsh.bundle.patch` 指向 `cordis.patch.yml`（install 时自动插入插件行）。
