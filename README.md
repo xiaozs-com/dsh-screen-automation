@@ -34,6 +34,14 @@ dsh-screen-automation  (Host 插件, Node/TS)
 平台 CLI 与 Windows/macOS 共用同一套命令，且标准输出为 JSON，因此桥接层只需要：
 **定位二进制 → 调 CLI → 解析 JSON → 回传**。
 
+## 工作流开发语义
+
+本插件不自行解析、转换或补全 `workflow.md`，因此桌面端新增流程语言时，桥接层保持原样透传。
+需要创建或修改流程的 Agent 必须遵循“屏幕自动化工程师”的[当前工作流开发标准](https://github.com/xiaozs-com/screen-automation-engineer/blob/main/references/workflow-standard.md)，并以本机
+`screen_automation_capabilities` 和 `screen_automation_workflow_inspect` 的结果为准。安装前先检查、
+校验流程；校验报错时不得猜测字段或用旧语法绕过。当前标准已包括表单填写的运行期 OCR `锚定`、
+相对 `偏移`、越界滚动重定位及安全停止规则。
+
 ## 暴露的工具（共 30 个）
 
 ### 1. 平台自检与流程生命周期
@@ -75,8 +83,8 @@ dsh-screen-automation  (Host 插件, Node/TS)
 
 | 工具 | 映射的 CLI | 说明 |
 |---|---|---|
-| `screen_automation_workflow_validate` | `cli workflow validate <id>` | 校验已安装 workflow |
-| `screen_automation_workflow_install` | `cli workflow install <source>` | 从本地源（目录/压缩包）安装 workflow |
+| `screen_automation_workflow_validate` | `cli workflow validate <id>` | 校验已安装 workflow；修改后必须执行，报错时不得猜语法 |
+| `screen_automation_workflow_install` | `cli workflow install <source>` | 从本地源（目录/压缩包）安装已按当前流程语言检查过的 workflow |
 | `screen_automation_workflow_remove` | `cli workflow remove <id>` | 移除已安装 workflow |
 
 ### 5. 任务会话（绑定窗口，后续控制/识别在该窗口内生效）

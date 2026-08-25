@@ -486,7 +486,7 @@ export function apply(ctx: Context): void {
   // 21) 校验已安装 workflow
   ctx.tools.register(cliTool({
     name: 'screen_automation_workflow_validate',
-    description: 'Validate an installed workflow by id via the local helper CLI.',
+    description: 'Validate an installed workflow by id via the local helper CLI. Run this after every workflow change; if it reports an error, stop and fix the workflow instead of guessing unsupported language syntax.',
     parameters: {
       workflow_id: { type: 'string', required: true, description: 'Installed workflow id.' },
     },
@@ -496,7 +496,7 @@ export function apply(ctx: Context): void {
   // 22) 安装 workflow（从本地源路径）
   ctx.tools.register(cliTool({
     name: 'screen_automation_workflow_install',
-    description: 'Install a workflow into the local helper from a source path (directory or archive).',
+    description: 'Install a workflow into the local helper from a source path (directory or archive). Inspect and validate the source against the local helper current workflow language before installing; never invent unsupported workflow fields.',
     parameters: {
       source: { type: 'string', required: true, description: 'Path to workflow source (dir/archive).' },
     },
@@ -576,7 +576,7 @@ export function apply(ctx: Context): void {
   // 29) 检查 workflow 源（未安装也能看）
   ctx.tools.register(cliTool({
     name: 'screen_automation_workflow_inspect',
-    description: 'Inspect a workflow source (directory/archive) without installing it; returns its manifest as JSON.',
+    description: 'Inspect and validate a workflow source (directory/archive) without installing it; returns validated source metadata as JSON. Use before installing or upgrading a workflow.',
     parameters: {
       source: { type: 'string', required: true, description: 'Path to workflow source (dir/archive).' },
     },
