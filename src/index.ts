@@ -622,8 +622,8 @@ export function apply(ctx: Context): void {
       prompt: { type: 'string', description: 'What to ask about the screenshot. Defaults to a general description request.' },
       target: { type: 'string', description: 'Capture target: foreground | virtual-screen | work-area | task. Default foreground.' },
       region: { type: 'string', description: 'Optional capture region in helper format (e.g. "0,0,800,600").' },
-      provider: { type: 'string', description: 'dsh LLM provider route for vision (e.g. "deepseek" for DeepSeek-V4-Flash-Vision-Exp, or a local ollama provider). Falls back to env SCREEN_AUTOMATION_VISION_PROVIDER, then "deepseek".' },
-      model: { type: 'string', description: 'Vision model id under the provider. Falls back to env SCREEN_AUTOMATION_VISION_MODEL, then "DeepSeek-V4-Flash-Vision-Exp" (vision model on the deepseek provider).' },
+      provider: { type: 'string', description: 'dsh LLM provider route for vision. Falls back to env SCREEN_AUTOMATION_VISION_PROVIDER, then "deepseek-official".' },
+      model: { type: 'string', description: 'Vision model id under the provider. Falls back to env SCREEN_AUTOMATION_VISION_MODEL, then "deepseek-v4-flash-vision-exp".' },
       system: { type: 'string', description: 'Optional system prompt for the vision call.' },
     },
     output: {
@@ -658,7 +658,20 @@ export function apply(ctx: Context): void {
         throw new Error('dsh attachment service (ctx.attachments) is unavailable in this profile; cannot register the screenshot.')
       }
 
-      // 1) 让小助手截图，输出到我们可控的临时文件
+      const provider =
+        (typeof args.provider === 'string' && args.provider.trim())
+          ? args.provider.trim()
+          : (process.env.SCREEN_AUTOMATION_VISION_PROVIDER?.trim() || 'deepseek-official')
+      const model =
+        (typeof args.model === 'string' && args.model.trim())
+          ? args.model.trim()
+          : (process.env.SCREEN_AUTOMATION_VISION_MODEL?.trim() || 'deepseek-v4-flash-vision-exp')
+      const modelInfo = await ctx.llm.resolveModelInfo(provider, model)
+      if (!modelInfo.inputModalities?.includes('image')) {
+        throw new Error(`dsh model ${provider}/${model} does not declare image input; screenshot was not captured.`)
+      }
+
+      // 1) 能力确认通过后再让小助手截图，输出到我们可控的临时文件
       const target = typeof args.target === 'string' && args.target.trim() ? args.target.trim() : 'foreground'
       const region = typeof args.region === 'string' && args.region.trim() ? args.region.trim() : undefined
       const outPath = path.join(os.tmpdir(), `dsh-sa-capture-${process.pid}-${Date.now()}.png`)
@@ -712,14 +725,6 @@ export function apply(ctx: Context): void {
       //    优先级：调用参数 > 环境变量(整 profile 统一默认) > hardcoded 兜底。
       //    默认 deepseek 提供方的 DeepSeek-V4-Flash-Vision-Exp 即视觉模型，可直接用；
       //    想换本机模型（如 qwen2.5-vl）就靠 provider/model 或环境变量覆盖。
-      const provider =
-        (typeof args.provider === 'string' && args.provider.trim())
-          ? args.provider.trim()
-          : (process.env.SCREEN_AUTOMATION_VISION_PROVIDER?.trim() || 'deepseek')
-      const model =
-        (typeof args.model === 'string' && args.model.trim())
-          ? args.model.trim()
-          : (process.env.SCREEN_AUTOMATION_VISION_MODEL?.trim() || 'DeepSeek-V4-Flash-Vision-Exp')
       let text = ''
       for await (const chunk of ctx.llm.stream({
         provider,
