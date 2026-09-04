@@ -53,6 +53,21 @@ const INSTALL_HINT =
   'Or point this plugin at an existing install via one of the env vars: ' +
   'SCREEN_AUTOMATION_BIN, SCREEN_AUTOMATION_MAC_APP, SCREEN_AUTOMATION_WIN_EXE.'
 
+const BRIDGE_POLICY_VERSION = '1'
+
+/** Bridge tasks receive an exact allowlist; normal DSH sessions keep all tools. */
+export function isToolAllowedByBridge(
+  toolName: string,
+  env: NodeJS.ProcessEnv = process.env,
+): boolean {
+  const policyVersion = env.SCREEN_AUTOMATION_AGENT_TOOL_POLICY_VERSION?.trim()
+  const rawAllowlist = env.SCREEN_AUTOMATION_AGENT_ALLOWED_TOOLS
+  if (!policyVersion && rawAllowlist === undefined) return true
+  if (policyVersion !== BRIDGE_POLICY_VERSION || rawAllowlist === undefined) return false
+  const allowed = new Set(rawAllowlist.split(',').map((item) => item.trim()).filter(Boolean))
+  return allowed.has(toolName)
+}
+
 /** 在多个候选路径里找到已安装的屏幕自动化小助手二进制。优先级：环境变量 > 平台默认位置。 */
 function resolveBinary(): string | null {
   const env = process.env
@@ -144,6 +159,9 @@ function cliTool(opts: CliToolOptions) {
       },
     },
     async execute(args) {
+      if (!isToolAllowedByBridge(opts.name)) {
+        throw new Error(`screen_automation tool denied by Agent Bridge task policy: ${opts.name}`)
+      }
       try {
         return await runCli(opts.buildArgs(args))
       } catch (e) {

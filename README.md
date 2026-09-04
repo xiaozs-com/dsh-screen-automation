@@ -117,6 +117,17 @@ screen capture 拿图 → ctx.attachments.saveImage 登记为不可变图片引�
   注册成 dsh 的一个 provider，再把 `provider` / `model` 传进工具即可——本地算力，不烧远程 VLM。
 - 依赖 dsh 运行时的 `ctx.llm`（视觉模型服务）与 `ctx.attachments`（图片登记服务）；任一不可用，工具会抛出明确错误。
 
+## Agent Bridge 任务级工具策略
+
+插件正常安装在交互式 DSH 会话中时，仍提供完整工具集。由“屏幕自动化小助手”的 Agent Bridge
+启动受控任务时，Bridge 会同时设置策略版本和精确工具白名单；插件在每次执行工具前强制校验，
+未列入的流程安装、卸载、启动等工具即使出现在模型上下文中也会被拒绝。
+
+策略使用 `SCREEN_AUTOMATION_AGENT_TOOL_POLICY_VERSION=1` 和
+`SCREEN_AUTOMATION_AGENT_ALLOWED_TOOLS`。这两个变量是 Bridge 与插件之间的内部契约，普通用户
+不应手工设置；只设置其中一个、使用未知策略版本或传入空白名单时，默认拒绝所有插件工具。
+此检查是执行边界，不以提示词服从作为授权依据。
+
 ## 二进制发现（按优先级）
 
 1. 环境变量 `SCREEN_AUTOMATION_BIN`（最高优先级，直接指向可执行文件）
