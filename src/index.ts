@@ -604,8 +604,8 @@ export function apply(ctx: Context): void {
   // 30) 把小助手截图喂给 dsh 的视觉模型（识别阶梯的最高层：VLM 理解屏幕）
   // 流程：screen capture 拿图 → ctx.attachments 登记为不可变图片引用 →
   //       拼一个含 image block 的 user 消息 → ctx.llm.stream 多模态推理 → 收集 text-delta。
-  // 注意：模型走的是 dsh 当前 profile 配置的 provider。默认 deepseek 提供方的
-  //       DeepSeek-V4-Flash-Vision-Exp 就是视觉模型，可直接用于屏幕理解；若想改用
+  // 注意：模型走的是 dsh 当前 profile 配置的 provider。默认 deepseek-official 提供方的
+  //       deepseek-v4-flash-vision-exp 就是视觉模型，可直接用于屏幕理解；若想改用
   //       本机模型，用环境变量 SCREEN_AUTOMATION_VISION_PROVIDER / _MODEL 配置，或每次
   //       调用传 provider/model（例如本机 Ollama 的 qwen2.5-vl）。understand 依赖
   //       ctx.llm 与 ctx.attachments，已在插件顶层 inject 中声明。
@@ -723,7 +723,7 @@ export function apply(ctx: Context): void {
 
       // 5) 走 dsh 当前 profile 的视觉模型（可传 provider/model 指向本地模型）。
       //    优先级：调用参数 > 环境变量(整 profile 统一默认) > hardcoded 兜底。
-      //    默认 deepseek 提供方的 DeepSeek-V4-Flash-Vision-Exp 即视觉模型，可直接用；
+      //    默认 deepseek-official 提供方的 deepseek-v4-flash-vision-exp 即视觉模型；
       //    想换本机模型（如 qwen2.5-vl）就靠 provider/model 或环境变量覆盖。
       let text = ''
       for await (const chunk of ctx.llm.stream({
