@@ -1,0 +1,59 @@
+name: Publish to npm
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  publish:
+    name: Build, verify, and publish
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          registry-url: https://registry.npmjs.org
+
+      - name: Confirm tag matches package version
+        run: |
+          PACKAGE_VERSION="$(node -p \"require('./package.json').version\")"
+          if [ "v$PACKAGE_VERSION" != "$GITHUB_REF_NAME" ]; then
+            echo "Tag $GITHUB_REF_NAME does not match package.json version $PACKAGE_VERSION."
+            exit 1
+          fi
+
+      - name: Install
+        run: npm ci
+
+      - name: Build
+        run: npm run build
+
+      - name: Verify tarball contains entry files
+        run: |
+          set -e
+          npm pack --dry-run --json > pack.json
+          node - <<'NODE'
+          const fs = require('fs');
+          const p = JSON.parse(fs.readFileSync('pack.json', 'utf8'))[0];
+          const files = (p.files || []).map(f => f.path.replace(/^package\//, ''));
+          const required = ['lib/index.js', 'lib/index.d.ts'];
+          const missing = required.filter(f => !files.includes(f));
+          if (missing.length) {
+            console.error('MISSING from pack:', missing.join(', '));
+            process.exit(1);
+          }
+          console.log('OK: pack contains', required.join(' & '));
+          NODE
+
+      - name: Publish to npm
+        run: npm publish --provenance
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
