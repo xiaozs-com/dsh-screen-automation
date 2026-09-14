@@ -87,9 +87,18 @@ function resolveBinary(): string | null {
   if (process.platform === 'win32') {
     const win = env.SCREEN_AUTOMATION_WIN_EXE
     if (win && fs.existsSync(win)) return win
-    const pf = env.ProgramFiles
-    const guess = pf ? `${pf}\\Xiaozs\\ScreenAutomationHelper\\ScreenAutomationHelper.exe` : null
-    if (guess && fs.existsSync(guess)) return guess
+    const candidates = [
+      env.LOCALAPPDATA
+        ? `${env.LOCALAPPDATA}\\Programs\\Xiaozs\\ScreenAutomationHelper\\ScreenAutomationHelper.exe`
+        : null,
+      env.ProgramFiles
+        ? `${env.ProgramFiles}\\Xiaozs\\ScreenAutomationHelper\\ScreenAutomationHelper.exe`
+        : null,
+      env['ProgramFiles(x86)']
+        ? `${env['ProgramFiles(x86)']}\\Xiaozs\\ScreenAutomationHelper\\ScreenAutomationHelper.exe`
+        : null,
+    ].filter(Boolean) as string[]
+    for (const candidate of candidates) if (fs.existsSync(candidate)) return candidate
     return null
   }
   return null
@@ -99,6 +108,7 @@ function resolveBinary(): string | null {
 async function runCli(
   args: string[],
   timeoutMs = 30000,
+  stdinText?: string,
 ): Promise<{ ok: boolean; command: string; raw: string; data: any }> {
   const bin = resolveBinary()
   if (!bin) {
@@ -106,7 +116,7 @@ async function runCli(
   }
   const command = `cli ${args.join(' ')}`
   return new Promise((resolve, reject) => {
-    execFile(bin, ['cli', ...args], { timeout: timeoutMs, maxBuffer: 64 * 1024 * 1024 }, (err, stdout, stderr) => {
+    const child = execFile(bin, ['cli', ...args], { timeout: timeoutMs, maxBuffer: 64 * 1024 * 1024 }, (err, stdout, stderr) => {
       const raw = (stdout || '').toString()
       let data: any = null
       try {
@@ -123,6 +133,7 @@ async function runCli(
       }
       resolve({ ok: true, command, raw, data })
     })
+    if (stdinText !== undefined) child.stdin?.end(stdinText)
   })
 }
 
@@ -132,6 +143,7 @@ type CliToolOptions = {
   description: string
   parameters: any
   buildArgs: (args: any) => string[]
+  stdinText?: (args: any) => string
   // 二进制缺失等可预期错误时，不抛错、而是返回结构化结果（含 installHint），便于 Agent 直接转述安装引导。
   softFail?: boolean
 }
@@ -163,7 +175,7 @@ function cliTool(opts: CliToolOptions) {
         throw new Error(`screen_automation tool denied by Agent Bridge task policy: ${opts.name}`)
       }
       try {
-        return await runCli(opts.buildArgs(args))
+        return await runCli(opts.buildArgs(args), 30000, opts.stdinText?.(args))
       } catch (e) {
         if (opts.softFail) {
           const msg = e instanceof Error ? e.message : String(e)
@@ -196,6 +208,197 @@ export function apply(ctx: Context): void {
     description: 'List the capabilities the local Screen Automation Helper platform exposes (CLI / IPC features).',
     parameters: {},
     buildArgs: () => ['capabilities'],
+  }))
+
+  // 浏览器增强使用小助手的跨进程受管会话。工具层不暴露 --new 或 --stop-daemon，
+  // 避免 Agent 在每轮观察时关闭并重建浏览器。
+  ctx.tools.register(cliTool({
+    name: 'screen_automation_browser_health',
+    description: 'Check browser-enhancement availability. Call before opening a managed browser when status has not been checked.',
+    parameters: {},
+    buildArgs: () => ['browser', 'health'],
+  }))
+
+  ctx.tools.register(cliTool({
+    name: 'screen_automation_browser_status',
+    description: 'Report browser-enhancement installation, daemon and active managed sessions. On browser_session_not_open, call this once and report the state; never loop browser_open.',
+    parameters: {},
+    buildArgs: () => ['browser', 'status'],
+  }))
+
+  ctx.tools.register(cliTool({
+    name: 'screen_automation_browser_open',
+    description: 'Open or reuse one persistent managed Chrome/Edge session and optionally enter a URL immediately. Call once at the start of a browser task. On waiting_for_user, use credentials only when the user explicitly supplied them; otherwise stop and ask the user to log in in the open window. Never refresh, close or reopen while waiting.',
+    parameters: {
+      browser: { type: 'string', required: true, enum: ['chrome', 'edge'], description: 'Managed browser kind.' },
+      region: { type: 'string', description: 'Optional screen bounds left,top,right,bottom.' },
+      url: { type: 'string', description: 'Optional HTTP/HTTPS URL to enter immediately.' },
+      timeout: { type: 'number', description: 'Navigation timeout seconds.' },
+    },
+    buildArgs: (a) => {
+      const args = ['browser', 'open', String(a.browser)]
+      if (typeof a.region === 'string' && a.region) args.push('--region', a.region)
+      if (typeof a.url === 'string' && a.url) args.push('--url', a.url)
+      if (typeof a.timeout === 'number') args.push('--timeout', String(a.timeout))
+      return args
+    },
+  }))
+
+  ctx.tools.register(cliTool({
+    name: 'screen_automation_browser_auth_status',
+    description: 'Recheck the existing browser after login or verification. Continue only when status is ready. Never write raw cookies or passwords into model context, workflow files, runtime logs or result output.',
+    parameters: {
+      browser: { type: 'string', required: true, enum: ['chrome', 'edge'] },
+    },
+    buildArgs: (a) => ['browser', 'auth-status', '--browser', String(a.browser)],
+  }))
+
+  ctx.tools.register(cliTool({
+    name: 'screen_automation_browser_navigate',
+    description: 'Navigate the existing managed browser session. On waiting_for_user, use credentials only when explicitly supplied; otherwise leave the page open and wait. After user confirmation call browser_auth_status and continue the same session. Do not call browser_open again unless browser_session_expired.',
+    parameters: {
+      browser: { type: 'string', required: true, enum: ['chrome', 'edge'] },
+      url: { type: 'string', required: true, description: 'HTTP/HTTPS URL.' },
+      timeout: { type: 'number', description: 'Navigation timeout seconds.' },
+    },
+    buildArgs: (a) => {
+      const args = ['browser', 'navigate', '--browser', String(a.browser), String(a.url)]
+      if (typeof a.timeout === 'number') args.push('--timeout', String(a.timeout))
+      return args
+    },
+  }))
+
+  ctx.tools.register(cliTool({
+    name: 'screen_automation_browser_locate',
+    description: 'Locate visible DOM objects in the existing managed browser session. Page changes invalidate prior objects, so locate again after navigation or actions.',
+    parameters: {
+      browser: { type: 'string', required: true, enum: ['chrome', 'edge'] },
+      selector: { type: 'string', description: 'Optional CSS selector.' },
+      match_text: { type: 'string', description: 'Optional visible-text filter.' },
+      article: { type: 'boolean', description: 'Locate the main article body.' },
+      limit: { type: 'number', description: 'Maximum candidates, default 20.' },
+    },
+    buildArgs: (a) => {
+      const args = ['browser', 'locate', '--browser', String(a.browser)]
+      if (typeof a.selector === 'string' && a.selector) args.push('--selector', a.selector)
+      if (typeof a.match_text === 'string' && a.match_text) args.push('--match-text', a.match_text)
+      if (a.article) args.push('--article')
+      if (typeof a.limit === 'number') args.push('--limit', String(a.limit))
+      return args
+    },
+  }))
+
+  const browserTargetParameters = (extra: Record<string, any> = {}) => ({
+    browser: { type: 'string', required: true, enum: ['chrome', 'edge'] },
+    selector: { type: 'string', description: 'CSS selector; omit only when object_json is supplied.' },
+    match_text: { type: 'string', description: 'Optional visible-text filter.' },
+    index: { type: 'number', description: 'Explicit zero-based candidate index when multiple matches are expected.' },
+    object_json: { type: 'string', description: 'Previously located object JSON from the same live session.' },
+    ...extra,
+  })
+  const browserTargetArgs = (command: string, a: any): string[] => {
+    const args = ['browser', command, '--browser', String(a.browser)]
+    if (typeof a.selector === 'string' && a.selector) args.push('--selector', a.selector)
+    if (typeof a.match_text === 'string' && a.match_text) args.push('--match-text', a.match_text)
+    if (typeof a.index === 'number') args.push('--index', String(a.index))
+    if (typeof a.object_json === 'string' && a.object_json) args.push('--object-json', a.object_json)
+    return args
+  }
+
+  ctx.tools.register(cliTool({
+    name: 'screen_automation_browser_read',
+    description: 'Read fields from one uniquely matched visible object in the existing session. Never open or close the browser around this call.',
+    parameters: browserTargetParameters({ fields: { type: 'string', description: 'Comma-separated fields, default text.' } }),
+    buildArgs: (a) => {
+      const args = browserTargetArgs('read', a)
+      if (typeof a.fields === 'string' && a.fields) args.push('--fields', a.fields)
+      return args
+    },
+  }))
+
+  for (const operation of [
+    ['click', 'Click one uniquely matched visible browser object.'],
+    ['select-text', 'Select the visible text of one uniquely matched browser object.'],
+  ] as const) {
+    ctx.tools.register(cliTool({
+      name: `screen_automation_browser_${operation[0].replace('-', '_')}`,
+      description: `${operation[1]} Re-locate and verify after the action; keep the same managed session open.`,
+      parameters: browserTargetParameters(),
+      buildArgs: (a) => browserTargetArgs(operation[0], a),
+    }))
+  }
+
+  ctx.tools.register(cliTool({
+    name: 'screen_automation_browser_fill',
+    description: 'Fill one uniquely matched browser field, including a credential authorized by the user. Sensitive text is sent over stdin and must not be written into model context, workflow files, runtime logs or result output.',
+    parameters: browserTargetParameters({ text: { type: 'string', required: true } }),
+    buildArgs: (a) => [...browserTargetArgs('fill', a), '--text-stdin'],
+    stdinText: (a) => String(a.text),
+  }))
+
+  ctx.tools.register(cliTool({
+    name: 'screen_automation_browser_scroll',
+    description: 'Scroll the current managed browser page, then locate/read again because page objects may have changed.',
+    parameters: {
+      browser: { type: 'string', required: true, enum: ['chrome', 'edge'] },
+      x: { type: 'number', description: 'Horizontal delta.' },
+      y: { type: 'number', description: 'Vertical delta.' },
+    },
+    buildArgs: (a) => ['browser', 'scroll', '--browser', String(a.browser), '--x', String(a.x ?? 0), '--y', String(a.y ?? 0)],
+  }))
+
+  ctx.tools.register(cliTool({
+    name: 'screen_automation_browser_press',
+    description: 'Press a key in the current managed browser session and verify the result without reopening the browser.',
+    parameters: {
+      browser: { type: 'string', required: true, enum: ['chrome', 'edge'] },
+      key: { type: 'string', required: true, description: 'Playwright key name such as Enter or Escape.' },
+    },
+    buildArgs: (a) => ['browser', 'press', '--browser', String(a.browser), String(a.key)],
+  }))
+
+  ctx.tools.register(cliTool({
+    name: 'screen_automation_browser_copy',
+    description: 'Copy one safe field from a uniquely matched browser object. The helper returns bounded metadata and does not log copied content.',
+    parameters: browserTargetParameters({ field: { type: 'string', enum: ['text', 'value', 'href'], description: 'Field to copy, default text.' } }),
+    buildArgs: (a) => {
+      const args = browserTargetArgs('copy', a)
+      if (typeof a.field === 'string') args.push('--field', a.field)
+      return args
+    },
+  }))
+
+  ctx.tools.register(cliTool({
+    name: 'screen_automation_browser_download',
+    description: 'Download through one uniquely matched browser object into the helper-managed download directory.',
+    parameters: browserTargetParameters({
+      filename: { type: 'string', description: 'Optional safe output filename.' },
+      timeout: { type: 'number', description: 'Download timeout seconds.' },
+    }),
+    buildArgs: (a) => {
+      const args = browserTargetArgs('download', a)
+      if (typeof a.filename === 'string' && a.filename) args.push('--filename', a.filename)
+      if (typeof a.timeout === 'number') args.push('--timeout', String(a.timeout))
+      return args
+    },
+  }))
+
+  ctx.tools.register(cliTool({
+    name: 'screen_automation_browser_verify',
+    description: 'Verify a browser action against an explicit expectation in the existing session.',
+    parameters: {
+      browser: { type: 'string', required: true, enum: ['chrome', 'edge'] },
+      action_json: { type: 'string', required: true, description: 'Action result JSON.' },
+      expectation_json: { type: 'string', required: true, description: 'Verification expectation JSON.' },
+    },
+    buildArgs: (a) => ['browser', 'verify', '--browser', String(a.browser), '--action-json', String(a.action_json), '--expectation-json', String(a.expectation_json)],
+  }))
+
+  ctx.tools.register(cliTool({
+    name: 'screen_automation_browser_close',
+    description: 'Close the managed browser only after the browser task completes, fails, or the user stops it. Never close between observation and action steps.',
+    parameters: { browser: { type: 'string', required: true, enum: ['chrome', 'edge'] } },
+    buildArgs: (a) => ['browser', 'close', String(a.browser)],
   }))
 
   // 3) 列出已安装 workflow
@@ -476,16 +679,17 @@ export function apply(ctx: Context): void {
   // 19) 键入文本
   ctx.tools.register(cliTool({
     name: 'screen_automation_type_text',
-    description: 'Type text into the focused element via the local helper keyboard.',
+    description: 'Type user-authorized text into the focused element. Sensitive text is sent over stdin and must not be written into model context, workflow files, runtime logs or result output.',
     parameters: {
       text: { type: 'string', required: true, description: 'Text to type.' },
       interval: { type: 'number', description: 'Seconds between keystrokes (default 0.0).' },
     },
     buildArgs: (a) => {
-      const args = ['keyboard', 'write', '--text', String(a.text)]
+      const args = ['keyboard', 'write', '--text-stdin']
       if (typeof a.interval === 'number') args.push('--interval', String(a.interval))
       return args
     },
+    stdinText: (a) => String(a.text),
   }))
 
   // 20) 组合热键
@@ -747,7 +951,7 @@ export function apply(ctx: Context): void {
     },
   }))
 
-  console.log('[screen-automation] loaded; bridged tools: status, capabilities, list/run/stop workflows, runs, health, capture, ' +
+  console.log('[screen-automation] loaded; bridged tools: status, capabilities, browser enhancement, list/run/stop workflows, runs, health, capture, ' +
     'recognize_text, locate_text, color_regions, match_template, contours, wait_text, ' +
     'click, drag, scroll, long_press, type_text, hotkey, ' +
     'workflow_validate/install/remove/show/describe/inspect, task_begin/status/end, ' +

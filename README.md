@@ -6,7 +6,7 @@
 
 > 这不是重写屏幕自动化，而是**桥接**：dsh 负责 Agent 编排，小助手负责本地执行。
 
-> ⚠️ **前置依赖**：本插件只是一层桥接，**本机必须先独立安装「屏幕自动化小助手」桌面端**（Windows `.exe` / macOS `.app`），30 个工具才能真正工作。安装方式见下方「[前置依赖：安装屏幕自动化小助手](#前置依赖安装屏幕自动化小助手)」。
+> ⚠️ **前置依赖**：本插件只是一层桥接，**本机必须先独立安装「屏幕自动化小助手」桌面端**（Windows `.exe` / macOS `.app`），46 个工具才能真正工作。安装方式见下方「[前置依赖：安装屏幕自动化小助手](#前置依赖安装屏幕自动化小助手)」。
 
 ## 设计原则
 
@@ -42,7 +42,23 @@ dsh-screen-automation  (Host 插件, Node/TS)
 校验流程；校验报错时不得猜测字段或用旧语法绕过。当前标准已包括表单填写的运行期 OCR `锚定`、
 相对 `偏移`、`相对【文字】右侧` 等位置约束、越界滚动重定位、锚点虚线提示及安全停止规则。
 
-## 暴露的工具（共 30 个）
+## 暴露的工具（共 46 个）
+
+### 浏览器增强（受管会话）
+
+插件桥接 `browser health/status/open/navigate/auth-status/locate/read/click/fill/select-text/scroll/press/verify/copy/download/close`。
+同一个网页任务只调用一次 `screen_automation_browser_open`，后续工具按 `browser=chrome|edge` 跨 CLI
+进程复用同一会话；不得在每一步前重新打开，也不得在观察和操作之间关闭。插件不向 Agent 暴露
+`browser open --new` 或 `browser close --stop-daemon`。仅当小助手明确返回 `browser_session_expired`
+时重新打开一次；若返回 `browser_session_not_open`，先调用 `screen_automation_browser_status`，随后停止
+无限重试并向用户报告。
+
+给出网址时，在首次 `screen_automation_browser_open` 中直接传 `url`。小助手会创建或复用持久化受管
+Profile 并进入该网址；正常关闭或重启后会保留站点登录状态。若返回 `waiting_for_user / login_required`，
+保留当前窗口，停止工具调用并请用户登录；用户确认后调用 `screen_automation_browser_auth_status`，状态为
+`ready` 才在原会话继续。用户明确提供账号、密码或验证码时可以代填；敏感文字通过标准输入传给小助手，
+不出现在进程命令行中。只禁止 Agent 将 Cookie、密码等原始凭据写入模型上下文、流程文件、运行日志或
+结果输出；技术上无法代办的扫码、安全密钥、生物识别才等待用户。
 
 ### 1. 平台自检与流程生命周期
 
@@ -133,13 +149,14 @@ screen capture 拿图 → ctx.attachments.saveImage 登记为不可变图片引�
 1. 环境变量 `SCREEN_AUTOMATION_BIN`（最高优先级，直接指向可执行文件）
 2. macOS：`SCREEN_AUTOMATION_MAC_APP` → 其下 `Contents/MacOS/screen-automation-helper`
    或 `/Applications/Screen Automation Helper.app/...`、 `$HOME/Applications/Screen Automation Helper.app/...`
-3. Windows：`SCREEN_AUTOMATION_WIN_EXE` → `%ProgramFiles%\Xiaozs\ScreenAutomationHelper\...`
+3. Windows：`SCREEN_AUTOMATION_WIN_EXE` → `%LOCALAPPDATA%\Programs\Xiaozs\ScreenAutomationHelper\...` →
+   `%ProgramFiles%\Xiaozs\ScreenAutomationHelper\...` → `%ProgramFiles(x86)%\Xiaozs\ScreenAutomationHelper\...`
 
 都找不到时，工具会抛出带官网下载链接的明确错误。
 
 ## 前置依赖：安装屏幕自动化小助手
 
-本插件**不内置**任何屏幕识别或输入执行的代码，它只是一层桥接。要让上面 30 个工具真正可用，
+本插件**不内置**任何屏幕识别或输入执行的代码，它只是一层桥接。要让上面 46 个工具真正可用，
 你本机必须先装好「屏幕自动化小助手」(Screen Automation Helper) 桌面端——Windows 上是
 `ScreenAutomationHelper.exe`，macOS 上是 `Screen Automation Helper.app`。小助手通过 `cli <subcommand>`
 暴露 JSON 接口，本插件只是去「定位二进制 → 调 CLI → 解析 JSON → 回传」。
@@ -249,7 +266,7 @@ dsh plugin --profile web add dsh-screen-automation && dsh restart web
 - **依赖完整性**：原 `package.json` 缺 `typescript`，已补入 `devDependencies`；`npm install && npm run build` 现在可稳定产出 `lib/index.js` + `lib/index.d.ts`。
 - **类型层**：对照真实发布的 `@deepseek-ai/dsh-tools` / `@deepseek-ai/dsh-llm` / `@deepseek-ai/dsh-attachment` 编译通过。
 - **运行时层**：用桩二进制（写一张 PNG 到 `--output`）+ mock `ctx.llm.stream` / `ctx.attachments.saveImage` 验证全链路——
-  30 个工具注册成功，`screen_automation_understand` 正确执行 `cli screen capture --output`、读字节、登记 attachment、
+  工具注册成功，`screen_automation_understand` 正确执行 `cli screen capture --output`、读字节、登记 attachment、
   把 image block 塞进 `llm.stream` 的消息、并累积 text-delta 成结果。
 - 真机端到端需在已安装小助手 `.app`/`.exe` 且 dsh profile 配置了视觉模型的机器上跑（本仓库不携带该二进制）。
 
