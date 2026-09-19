@@ -42,11 +42,11 @@ dsh-screen-automation  (Host 插件, Node/TS)
 校验流程；校验报错时不得猜测字段或用旧语法绕过。当前标准已包括表单填写的运行期 OCR `锚定`、
 相对 `偏移`、`相对【文字】右侧` 等位置约束、越界滚动重定位、锚点虚线提示及安全停止规则。
 
-## 暴露的工具（共 46 个）
+## 暴露的工具（共 48 个）
 
 ### 浏览器增强（受管会话）
 
-插件桥接 `browser health/status/open/navigate/auth-status/locate/read/click/fill/select-text/scroll/press/verify/copy/download/close`。
+插件桥接 `browser health/status/open/navigate/auth-status/probe/outcome/locate/read/click/fill/select-text/scroll/press/verify/copy/download/close`。
 同一个网页任务只调用一次 `screen_automation_browser_open`，后续工具按 `browser=chrome|edge` 跨 CLI
 进程复用同一会话；不得在每一步前重新打开，也不得在观察和操作之间关闭。插件不向 Agent 暴露
 `browser open --new` 或 `browser close --stop-daemon`。仅当小助手明确返回 `browser_session_expired`
@@ -59,6 +59,12 @@ Profile 并进入该网址；正常关闭或重启后会保留站点登录状态
 `ready` 才在原会话继续。用户明确提供账号、密码或验证码时可以代填；敏感文字通过标准输入传给小助手，
 不出现在进程命令行中。只禁止 Agent 将 Cookie、密码等原始凭据写入模型上下文、流程文件、运行日志或
 结果输出；技术上无法代办的扫码、安全密钥、生物识别才等待用户。
+
+执行 DOM 任务前调用 `screen_automation_browser_probe`，按返回的 `USE_DOM`、`ENHANCE_DOM` 或
+`EXIT_DOM` 选择 DOM 路线。只有显式采用 Probe 返回的策略时，才把 `strategy_id` 传给
+`screen_automation_browser_locate`；普通定位不传。任务结束后调用一次
+`screen_automation_browser_outcome` 记账，只有业务结果已经验证时才把成功记录为已验证。
+`EXIT_DOM` 只退出 DOM 路线，不会禁用 UIA、OCR、CV、VLM、鼠标键盘或普通屏幕自动化。
 
 ### 1. 平台自检与流程生命周期
 

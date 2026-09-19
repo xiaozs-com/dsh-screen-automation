@@ -269,14 +269,48 @@ export function apply(ctx: Context): void {
   }))
 
   ctx.tools.register(cliTool({
+    name: 'screen_automation_browser_probe',
+    description: 'Probe the current managed page before a DOM task. Use the returned USE_DOM, ENHANCE_DOM or EXIT_DOM decision only for the DOM route; EXIT_DOM does not disable UIA, OCR, CV, VLM or ordinary screen control.',
+    parameters: {
+      browser: { type: 'string', required: true, enum: ['chrome', 'edge'] },
+      task_kind: { type: 'string', required: true, enum: ['READ', 'LOCATE', 'ACT', 'FILL', 'SELECT', 'DOWNLOAD', 'VERIFY'] },
+    },
+    buildArgs: (a) => ['browser', 'probe', '--browser', String(a.browser), '--task-kind', String(a.task_kind)],
+  }))
+
+  ctx.tools.register(cliTool({
+    name: 'screen_automation_browser_outcome',
+    description: 'Record the verified result of a DOM route once. Record success only when the requested outcome was verified; otherwise report failure with a structured failure type.',
+    parameters: {
+      browser: { type: 'string', required: true, enum: ['chrome', 'edge'] },
+      decision: { type: 'string', required: true, enum: ['USE_DOM', 'ENHANCE_DOM', 'EXIT_DOM'] },
+      task_kind: { type: 'string', required: true, enum: ['READ', 'LOCATE', 'ACT', 'FILL', 'SELECT', 'DOWNLOAD', 'VERIFY'] },
+      result: { type: 'string', required: true, enum: ['success', 'failure'] },
+      verified: { type: 'boolean', description: 'Set only when the requested page outcome was explicitly verified.' },
+      failure_type: { type: 'string', description: 'Structured helper failure type when result is failure.' },
+    },
+    buildArgs: (a) => {
+      const args = [
+        'browser', 'outcome', '--browser', String(a.browser),
+        '--decision', String(a.decision), '--task-kind', String(a.task_kind),
+        '--result', String(a.result),
+      ]
+      if (a.verified) args.push('--verified')
+      if (typeof a.failure_type === 'string' && a.failure_type) args.push('--failure-type', a.failure_type)
+      return args
+    },
+  }))
+
+  ctx.tools.register(cliTool({
     name: 'screen_automation_browser_locate',
-    description: 'Locate visible DOM objects in the existing managed browser session. Page changes invalidate prior objects, so locate again after navigation or actions.',
+    description: 'Locate visible DOM objects in the existing managed browser session. Pass strategy_id only when explicitly adopting the current probe strategy. Page changes invalidate prior objects, so locate again after navigation or actions.',
     parameters: {
       browser: { type: 'string', required: true, enum: ['chrome', 'edge'] },
       selector: { type: 'string', description: 'Optional CSS selector.' },
       match_text: { type: 'string', description: 'Optional visible-text filter.' },
       article: { type: 'boolean', description: 'Locate the main article body.' },
       limit: { type: 'number', description: 'Maximum candidates, default 20.' },
+      strategy_id: { type: 'string', description: 'Strategy id returned by the current browser probe; omit for ordinary locate.' },
     },
     buildArgs: (a) => {
       const args = ['browser', 'locate', '--browser', String(a.browser)]
@@ -284,6 +318,7 @@ export function apply(ctx: Context): void {
       if (typeof a.match_text === 'string' && a.match_text) args.push('--match-text', a.match_text)
       if (a.article) args.push('--article')
       if (typeof a.limit === 'number') args.push('--limit', String(a.limit))
+      if (typeof a.strategy_id === 'string' && a.strategy_id) args.push('--strategy-id', a.strategy_id)
       return args
     },
   }))
