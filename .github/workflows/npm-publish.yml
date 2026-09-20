@@ -4,10 +4,19 @@ on:
   push:
     tags:
       - 'v*'
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: Existing version tag to publish, for example v0.1.9
+        required: true
+        type: string
 
 permissions:
   contents: read
   id-token: write
+
+env:
+  RELEASE_TAG: ${{ inputs.release_tag || github.ref_name }}
 
 jobs:
   publish:
@@ -24,9 +33,9 @@ jobs:
 
       - name: Confirm tag matches package version
         run: |
-          PACKAGE_VERSION="$(node -p \"require('./package.json').version\")"
-          if [ "v$PACKAGE_VERSION" != "$GITHUB_REF_NAME" ]; then
-            echo "Tag $GITHUB_REF_NAME does not match package.json version $PACKAGE_VERSION."
+          PACKAGE_VERSION="$(node -p 'require("./package.json").version')"
+          if [ "v$PACKAGE_VERSION" != "$RELEASE_TAG" ]; then
+            echo "Tag $RELEASE_TAG does not match package.json version $PACKAGE_VERSION."
             exit 1
           fi
 
