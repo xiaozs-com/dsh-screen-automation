@@ -1,6 +1,6 @@
 {
   "name": "dsh-screen-automation",
-  "version": "0.1.9",
+  "version": "0.1.10",
   "description": "DeepSeek Harness (dsh) plugin that bridges the local 'Screen Automation Helper' desktop platform (Windows/macOS) into the Agent tool system. Exposes status, capabilities, workflow list/run/stop, run management, screen capture, local recognition primitives, input control, workflow lifecycle, task sessions and VLM understanding as dsh tools that shell out to the helper's CLI (JSON interface).",
   "type": "module",
   "license": "MIT",
@@ -26,6 +26,7 @@
     }
   },
   "scripts": {
+    "test": "npm run build && node --test tests/*.test.mjs",
     "build": "tsc -p tsconfig.json",
     "watch": "tsc -p tsconfig.json --watch",
     "prepack": "npm run build"

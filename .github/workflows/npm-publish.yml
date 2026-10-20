@@ -42,8 +42,8 @@ jobs:
       - name: Install
         run: npm ci
 
-      - name: Build
-        run: npm run build
+      - name: Build and test
+        run: npm test
 
       - name: Verify tarball contains entry files
         run: |
